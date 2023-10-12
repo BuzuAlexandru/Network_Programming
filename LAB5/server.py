@@ -26,7 +26,7 @@ def handle_client(client_socket, client_address):
     print(f"Accepted connection from {client_address}")
 
     while True:
-        message = client_socket.recv(1024).decode('utf-8')
+        message = client_socket.recv(100_000).decode('utf-8')
         if not message:
             break  # Exit the loop when the client disconnects
         message = json.loads(message)
@@ -61,7 +61,7 @@ def handle_client(client_socket, client_address):
             if not os.path.isfile(media_dir + file):
                 print(media_dir + file)
                 error = {
-                    "type": "error",
+                    "type": "res",
                     "payload": {
                         "message": f"File {file} does not exist on the server."
                     }
@@ -79,7 +79,7 @@ def handle_client(client_socket, client_address):
             else:
                 with open(media_dir + file, 'rb') as f:
                     content = f.read()
-                    content = base64.b64encode(content)
+                    content = base64.b64encode(content).decode()
                     file_type = 'img'
 
             msg = {
@@ -91,13 +91,30 @@ def handle_client(client_socket, client_address):
                 }
             }
             client_socket.send(json.dumps(msg).encode())
+            notif = {
+                "type": "res",
+                "payload": {
+                    "message": f"File downloaded successfully."
+                }
+            }
+            client_socket.send(json.dumps(notif).encode())
 
-        elif message['type'] == 'download':
+        elif message['type'] == 'upload':
             if message['payload']['f_type'] == 'txt':
                 with open(media_dir+message['payload']['f_name'], 'w') as f:
                     f.write(message['payload']['content'])
             else:
                 data = base64.b64decode(message['payload']['content'])
+                with open(media_dir+message['payload']['f_name'], 'wb') as f:
+                    f.write(data)
+
+            notif = {
+                "type": "res",
+                "payload": {
+                    "message": f"File uploaded successfully."
+                }
+            }
+            client_socket.send(json.dumps(notif).encode())
 
     # Remove the client from the list
     clients.remove(client_socket)

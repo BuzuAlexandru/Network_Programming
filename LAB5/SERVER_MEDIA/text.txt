@@ -1,2 +1,1 @@
 this is text from the server
-bruh

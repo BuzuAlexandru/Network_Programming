@@ -1,9 +1,18 @@
-import json, base64
+import base64
+import json
+import os
 import re
+import shutil
 import socket
 import threading
-import os
-import shutil
+
+'''
+download: img.jpg
+download: text.txt
+
+upload: img.jpg
+upload: text.txt
+'''
 
 # Server configuration
 HOST = '127.0.0.1'  # Server's IP address
@@ -30,13 +39,13 @@ print(f"Connected to {HOST}:{PORT}")
 
 def receive_messages():
     while True:
-        message = client_socket.recv(1024).decode('utf-8')
+        message = client_socket.recv(100_000).decode('utf-8')
         if not message:
-            break  # Exit the loop when the server disconnects
+            break
 
         message = json.loads(message)
         msg_type = message['type']
-        if msg_type == 'connect_ack' or msg_type == 'error':
+        if msg_type == 'connect_ack' or msg_type == 'res':
             print(message["payload"]["message"])
 
         elif msg_type == 'notification':
@@ -53,6 +62,8 @@ def receive_messages():
                     f.write(message['payload']['content'])
             else:
                 data = base64.b64decode(message['payload']['content'])
+                with open(media_dir+message['payload']['f_name'], 'wb') as f:
+                    f.write(data)
 
 
 # Start the message reception thread
@@ -82,9 +93,9 @@ while True:
     if message.lower() == 'exit':
         break
     elif re.search('upload: .*', message):
-        file = message[9:]
+        file = '/'+message[8:]
         if not os.path.isfile(media_dir+file):
-            print(f'File .{file} does not exist')
+            print(f'File {file} does not exist')
             continue
 
         content = ''
@@ -97,7 +108,7 @@ while True:
         else:
             with open(media_dir+file, 'rb') as f:
                 content = f.read()
-                content = base64.b64encode(content)
+                content = base64.b64encode(content).decode()
                 file_type = 'img'
 
         msg = {
