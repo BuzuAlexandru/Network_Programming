@@ -1,6 +1,9 @@
-import json
+import json, base64
+import re
 import socket
 import threading
+import os
+import shutil
 
 # Server configuration
 HOST = '127.0.0.1'  # Server's IP address
@@ -17,8 +20,11 @@ client_info = {
 }
 
 client_socket.connect((HOST, PORT))
-print(f"Connected to {HOST}:{PORT}")
+host, client_id = client_socket.getsockname()
 
+media_dir = f'./MEDIA{client_id}'
+
+print(f"Connected to {HOST}:{PORT}")
 
 # Function to receive and display messages
 
@@ -29,16 +35,24 @@ def receive_messages():
             break  # Exit the loop when the server disconnects
 
         message = json.loads(message)
-        if message['type'] == 'connect_ack':
+        msg_type = message['type']
+        if msg_type == 'connect_ack' or msg_type == 'error':
             print(message["payload"]["message"])
 
-        elif message['type'] == 'notification':
+        elif msg_type == 'notification':
             if message['payload']['room'] == client_info['room']:
                 print(message["payload"]["message"])
 
-        elif message['type'] == 'message':
+        elif msg_type == 'message':
             if message['payload']['room'] == client_info['room']:
                 print(f'{message["payload"]["sender"]}: {message["payload"]["text"]}')
+
+        elif msg_type == 'upload':
+            if message['payload']['f_type'] == 'txt':
+                with open(media_dir+message['payload']['f_name'], 'w') as f:
+                    f.write(message['payload']['content'])
+            else:
+                data = base64.b64decode(message['payload']['content'])
 
 
 # Start the message reception thread
@@ -60,20 +74,61 @@ connect_json = {
 client_socket.send(json.dumps(connect_json).encode())
 print('\nTo exit chat type "exit".')
 
+os.mkdir(media_dir)
+
 while True:
     message = input()
+    msg = dict()
     if message.lower() == 'exit':
         break
+    elif re.search('upload: .*', message):
+        file = message[9:]
+        if not os.path.isfile(media_dir+file):
+            print(f'File .{file} does not exist')
+            continue
 
-    msg = {
-        "type": "message",
-        "payload": {
-            "sender": client_info['name'],
-            "room": client_info['room'],
-            "text": message
+        content = ''
+        file_type = ''
+
+        if file[:4] == '.txt':
+            with open(media_dir+file, 'r') as f:
+                content = f.read()
+                file_type = 'txt'
+        else:
+            with open(media_dir+file, 'rb') as f:
+                content = f.read()
+                content = base64.b64encode(content)
+                file_type = 'img'
+
+        msg = {
+            "type": "upload",
+            "payload": {
+                "f_name": file,
+                "f_type": file_type,
+                "content": content
+            }
         }
-    }
+
+    elif re.search('download: .*', message):
+        file = message[10:]
+        msg = {
+            "type": "download",
+            "payload": {
+                "f_name": f'/{file}',
+            }
+        }
+
+    else:
+        msg = {
+            "type": "message",
+            "payload": {
+                "sender": client_info['name'],
+                "room": client_info['room'],
+                "text": message
+            }
+        }
     # Send the message to the server
     client_socket.send(json.dumps(msg).encode('utf-8'))
 
+shutil.rmtree(media_dir)
 client_socket.close()

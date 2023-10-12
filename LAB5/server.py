@@ -1,3 +1,5 @@
+import base64
+import os
 import socket
 import threading
 import json
@@ -14,6 +16,8 @@ server_socket.bind((HOST, PORT))
 
 # Listen for incoming connections
 server_socket.listen()
+
+media_dir = './SERVER_MEDIA'
 
 print(f"Server is listening on {HOST}:{PORT}")
 
@@ -51,6 +55,49 @@ def handle_client(client_socket, client_address):
             for client in clients:
                 if client != client_socket:
                     client.send(json.dumps(message).encode('utf-8'))
+
+        elif message['type'] == 'download':
+            file = message["payload"]["f_name"]
+            if not os.path.isfile(media_dir + file):
+                print(media_dir + file)
+                error = {
+                    "type": "error",
+                    "payload": {
+                        "message": f"File {file} does not exist on the server."
+                    }
+                }
+                client_socket.send(json.dumps(error).encode())
+                continue
+
+            content = ''
+            file_type = ''
+
+            if file.endswith('.txt'):
+                with open(media_dir + file, 'r') as f:
+                    content = f.read()
+                    file_type = 'txt'
+            else:
+                with open(media_dir + file, 'rb') as f:
+                    content = f.read()
+                    content = base64.b64encode(content)
+                    file_type = 'img'
+
+            msg = {
+                "type": "upload",
+                "payload": {
+                    "f_name": file,
+                    "f_type": file_type,
+                    "content": content
+                }
+            }
+            client_socket.send(json.dumps(msg).encode())
+
+        elif message['type'] == 'download':
+            if message['payload']['f_type'] == 'txt':
+                with open(media_dir+message['payload']['f_name'], 'w') as f:
+                    f.write(message['payload']['content'])
+            else:
+                data = base64.b64decode(message['payload']['content'])
 
     # Remove the client from the list
     clients.remove(client_socket)
